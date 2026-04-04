@@ -1,1 +1,15 @@
+image:
+  repository: praj83/devops-app
+  tag: latest
 
+service:
+  type: ClusterIP
+  port: 80
+
+container:
+  port: 3000
+
+ingress:
+  enabled: true
+  className: alb
+  host: devops-app.local
