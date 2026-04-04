@@ -10,40 +10,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 📥 Checkout Code
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Install AWS CLI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y awscli
-
+      # 🔐 Configure AWS (BEST PRACTICE)
       - name: Configure AWS Credentials
-        run: |
-          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws configure set region ap-south-1
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
 
+      # 🐳 Login to DockerHub
       - name: Login to DockerHub
         run: |
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
+      # 🏗️ Build Docker Image
       - name: Build Docker Image
         run: |
           docker build -t ${{ secrets.DOCKER_USERNAME }}/devops-app:latest .
 
-      - name: Push Docker Image
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/devops-app:latest
-
-      - name: Update kubeconfig
-        run: |
-          aws eks update-kubeconfig --name devops-cluster --region ap-south-1
-
-      - name: Install Helm
-        run: |
-          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-      - name: Deploy App
-        run: |
-          helm upgrade --install devops-app ./helm-chart
+      # 🚀 Push D
