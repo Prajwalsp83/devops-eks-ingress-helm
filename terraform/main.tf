@@ -1,3 +1,12 @@
+terraform {
+  backend "s3" {
+    bucket         = "devops-terraform-state-psp"
+    key            = "eks/terraform.tfstate"
+    region         = "ap-south-1"
+    dynamodb_table = "terraform-lock"
+  }
+}
+
 provider "aws" {
   region = "ap-south-1"
 }
@@ -19,7 +28,7 @@ module "eks" {
     devops = {
       desired_size   = 2
       instance_types = ["t3.medium"]
-      ami_type       = "AL2023_x86_64_STANDARD"
+      ami_type       = "AL2_x86_64"
     }
   }
 }
