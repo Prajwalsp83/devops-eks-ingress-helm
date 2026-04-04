@@ -1,1 +1,50 @@
+name: DevOps Full Pipeline
+
+on:
+push:
+branches:
+- main
+
+jobs:
+
+deploy:
+runs-on: ubuntu-latest
+
+```
+steps:
+- name: Checkout Code
+  uses: actions/checkout@v3
+
+# 🔐 Configure AWS
+- name: Configure AWS Credentials
+  run: |
+    aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+    aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    aws configure set region ap-south-1
+
+# 🐳 Login DockerHub
+- name: Login to DockerHub
+  run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+# 🏗️ Build Docker Image
+- name: Build Docker Image
+  run: docker build -t ${{ secrets.DOCKER_USERNAME }}/devops-app:latest .
+
+# 🚀 Push Image
+- name: Push Docker Image
+  run: docker push ${{ secrets.DOCKER_USERNAME }}/devops-app:latest
+
+# ☸️ Connect to EKS
+- name: Update kubeconfig
+  run: aws eks update-kubeconfig --name devops-cluster --region ap-south-1
+
+# 📦 Install Helm
+- name: Install Helm
+  run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# 🚀 Deploy using Helm
+- name: Deploy App
+  run: |
+    helm upgrade --install devops-app ./helm-chart
+```
 
