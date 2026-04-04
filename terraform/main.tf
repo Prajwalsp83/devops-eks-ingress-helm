@@ -7,7 +7,8 @@ source  = "terraform-aws-modules/eks/aws"
 version = "~> 20.0"
 
 cluster_name    = "devops-cluster"
-cluster_version = "1.29"
+cluster_version = "1.28"
+ami_type = "AL2_x86_64"
 
 vpc_id     = "vpc-04d954b1c1bf4c257"
 subnet_ids = [
