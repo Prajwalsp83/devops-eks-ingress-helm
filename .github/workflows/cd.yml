@@ -24,13 +24,25 @@ jobs:
 
       - name: Terraform Init
         working-directory: terraform
-        run: terraform init -reconfigure
+        run: terraform init   # ← removed -reconfigure, that was wiping state context
 
-      - name: Import cluster if not in state
+      - name: Import EKS cluster if not in state
         working-directory: terraform
         run: |
           terraform state show 'module.eks.aws_eks_cluster.this[0]' > /dev/null 2>&1 \
             || terraform import 'module.eks.aws_eks_cluster.this[0]' devops-cluster
+
+      - name: Import EKS node group if not in state
+        working-directory: terraform
+        run: |
+          terraform state show 'module.eks.module.eks_managed_node_group["devops"].aws_eks_node_group.this[0]' > /dev/null 2>&1 \
+            || terraform import \
+               'module.eks.module.eks_managed_node_group["devops"].aws_eks_node_group.this[0]' \
+               devops-cluster:devops-20260405111716013500000001
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan
 
       - name: Terraform Apply
         working-directory: terraform
@@ -50,11 +62,4 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name devops-cluster --region ap-south-1
-
-      - name: Install Helm
-        run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-      - name: Deploy App
-        run: helm upgrade --install devops-app ./helm-chart
+      - nam
