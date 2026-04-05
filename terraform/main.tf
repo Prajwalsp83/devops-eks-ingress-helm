@@ -1,4 +1,11 @@
 terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
   backend "s3" {
     bucket         = "devops-terraform-state-psp"
     key            = "eks/terraform.tfstate"
@@ -11,35 +18,6 @@ provider "aws" {
   region = "ap-south-1"
 }
 
-# ── FIX 1: Declare the http provider to fetch GitHub IP ranges ──
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    http = {
-      source  = "hashicorp/http"
-      version = "~> 3.0"
-    }
-  }
-}
-
-# ── FIX 2: Fetch GitHub Actions IP ranges ──
-data "http" "github_meta" {
-  url = "https://api.github.com/meta"
-}
-
-locals {
-  github_actions_cidrs = jsondecode(data.http.github_meta.response_body).actions
-}
-
-# ── FIX 3: Declare the KMS data source ──
-data "aws_kms_key" "eks" {
-  key_id = "alias/eks/devops-cluster"
-}
-
-# ── EKS Module ──
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
@@ -53,16 +31,16 @@ module "eks" {
     "subnet-0d1f12312f2ef3149"
   ]
 
+  # Endpoint access — public open for GitHub Actions (lock down CIDR later)
   cluster_endpoint_public_access       = true
   cluster_endpoint_private_access      = true
-  cluster_endpoint_public_access_cidrs = local.github_actions_cidrs
+  cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
 
-  create_kms_key = false
-  cluster_encryption_config = {
-    provider_key_arn = data.aws_kms_key.eks.arn
-    resources        = ["secrets"]
-  }
+  # KMS disabled (key was pending deletion)
+  create_kms_key            = false
+  cluster_encryption_config = {}
 
+  # Logs disabled
   cluster_enabled_log_types   = []
   create_cloudwatch_log_group = false
 
