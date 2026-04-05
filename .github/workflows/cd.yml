@@ -62,4 +62,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - nam
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name devops-cluster --region ap-south-1
+
+      - name: Install Helm
+        run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Deploy App
+        run: helm upgrade --install devops-app ./helm-chart
