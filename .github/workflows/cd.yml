@@ -35,7 +35,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_wrapper: false   # ← critical: without this, state commands behave oddly
+          terraform_wrapper: false
 
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
@@ -48,49 +48,45 @@ jobs:
         working-directory: terraform
         run: terraform init
 
-      - name: Show current state
+      - name: Smart Apply — Import if exists, Create if not
         working-directory: terraform
         run: |
-          echo "=== Current state ==="
-          terraform state list || echo "State is empty"
+          CLUSTER_STATUS=$(aws eks describe-cluster \
+            --name devops-cluster \
+            --region ap-south-1 \
+            --query 'cluster.status' \
+            --output text 2>/dev/null || echo "NOT_FOUND")
 
-      - name: Import EKS Cluster
-        working-directory: terraform
-        run: |
-          if terraform state list | grep -q 'module.eks.aws_eks_cluster.this\[0\]'; then
-            echo "Cluster already in state, skipping import"
-          else
-            echo "Importing cluster..."
+          echo ">>> Cluster status: $CLUSTER_STATUS"
+
+          if [ "$CLUSTER_STATUS" = "ACTIVE" ]; then
+            echo ">>> Cluster EXISTS — importing into Terraform state"
+
             terraform import \
               'module.eks.aws_eks_cluster.this[0]' \
-              devops-cluster
-          fi
+              devops-cluster 2>&1 || true
 
-      - name: Import EKS Node Group
-        working-directory: terraform
-        run: |
-          if terraform state list | grep -q 'module.eks.module.eks_managed_node_group\["devops"\].aws_eks_node_group.this\[0\]'; then
-            echo "Node group already in state, skipping import"
-          else
-            echo "Importing node group..."
+            NODE_GROUP=$(aws eks list-nodegroups \
+              --cluster-name devops-cluster \
+              --region ap-south-1 \
+              --query 'nodegroups[0]' \
+              --output text)
+
+            echo ">>> Node group found: $NODE_GROUP"
+
             terraform import \
               'module.eks.module.eks_managed_node_group["devops"].aws_eks_node_group.this[0]' \
-              'devops-cluster:devops-20260405111716013500000001'
+              "devops-cluster:$NODE_GROUP" 2>&1 || true
+
+            echo ">>> State contains:"
+            terraform state list
+
+          else
+            echo ">>> Cluster does NOT exist — Terraform will create it"
           fi
 
-      - name: Show state after import
-        working-directory: terraform
-        run: |
-          echo "=== State after import ==="
-          terraform state list
-
-      - name: Terraform Plan
-        working-directory: terraform
-        run: terraform plan
-
-      - name: Terraform Apply
-        working-directory: terraform
-        run: terraform apply -auto-approve
+          echo ">>> Running apply"
+          terraform apply -auto-approve
 
   deploy:
     needs: terraform
@@ -116,7 +112,8 @@ jobs:
         run: |
           helm repo add eks https://aws.github.io/eks-charts
           helm repo update
-          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+          helm upgrade --install aws-load-balancer-controller \
+            eks/aws-load-balancer-controller \
             -n kube-system \
             --set clusterName=devops-cluster \
             --set serviceAccount.create=true || true
