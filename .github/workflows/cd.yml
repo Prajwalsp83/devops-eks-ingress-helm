@@ -60,32 +60,38 @@ jobs:
           echo ">>> Cluster status: $CLUSTER_STATUS"
 
           if [ "$CLUSTER_STATUS" = "ACTIVE" ]; then
-            echo ">>> Cluster EXISTS — importing into Terraform state"
+            echo ">>> Cluster EXISTS — cleaning state and re-importing"
 
+            # Remove both from state first (safe if not present)
+            terraform state rm 'module.eks.aws_eks_cluster.this[0]' || true
+            terraform state rm \
+              'module.eks.module.eks_managed_node_group["devops"].aws_eks_node_group.this[0]' || true
+
+            # Import cluster
             terraform import \
               'module.eks.aws_eks_cluster.this[0]' \
-              devops-cluster 2>&1 || true
+              devops-cluster
 
+            # Get actual node group name dynamically
             NODE_GROUP=$(aws eks list-nodegroups \
               --cluster-name devops-cluster \
               --region ap-south-1 \
               --query 'nodegroups[0]' \
               --output text)
+            echo ">>> Node group: $NODE_GROUP"
 
-            echo ">>> Node group found: $NODE_GROUP"
-
+            # Import node group
             terraform import \
               'module.eks.module.eks_managed_node_group["devops"].aws_eks_node_group.this[0]' \
-              "devops-cluster:$NODE_GROUP" 2>&1 || true
+              "devops-cluster:$NODE_GROUP"
 
-            echo ">>> State contains:"
+            echo ">>> State after import:"
             terraform state list
 
           else
-            echo ">>> Cluster does NOT exist — Terraform will create it"
+            echo ">>> Cluster does NOT exist — fresh create"
           fi
 
-          echo ">>> Running apply"
           terraform apply -auto-approve
 
   deploy:
