@@ -31,16 +31,13 @@ module "eks" {
     "subnet-0d1f12312f2ef3149"
   ]
 
-  # Endpoint access — public open for GitHub Actions (lock down CIDR later)
   cluster_endpoint_public_access       = true
   cluster_endpoint_private_access      = true
   cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
 
-  # KMS disabled (key was pending deletion)
   create_kms_key            = false
   cluster_encryption_config = {}
 
-  # Logs disabled
   cluster_enabled_log_types   = []
   create_cloudwatch_log_group = false
 
