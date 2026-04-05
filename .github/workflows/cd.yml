@@ -6,7 +6,27 @@ on:
       - main
 
 jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: praj83/devops-app:latest
+
   terraform:
+    needs: docker
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -14,6 +34,8 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_wrapper: false   # ← critical: without this, state commands behave oddly
 
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
@@ -24,21 +46,43 @@ jobs:
 
       - name: Terraform Init
         working-directory: terraform
-        run: terraform init   # ← removed -reconfigure, that was wiping state context
+        run: terraform init
 
-      - name: Import EKS cluster if not in state
+      - name: Show current state
         working-directory: terraform
         run: |
-          terraform state show 'module.eks.aws_eks_cluster.this[0]' > /dev/null 2>&1 \
-            || terraform import 'module.eks.aws_eks_cluster.this[0]' devops-cluster
+          echo "=== Current state ==="
+          terraform state list || echo "State is empty"
 
-      - name: Import EKS node group if not in state
+      - name: Import EKS Cluster
         working-directory: terraform
         run: |
-          terraform state show 'module.eks.module.eks_managed_node_group["devops"].aws_eks_node_group.this[0]' > /dev/null 2>&1 \
-            || terraform import \
-               'module.eks.module.eks_managed_node_group["devops"].aws_eks_node_group.this[0]' \
-               devops-cluster:devops-20260405111716013500000001
+          if terraform state list | grep -q 'module.eks.aws_eks_cluster.this\[0\]'; then
+            echo "Cluster already in state, skipping import"
+          else
+            echo "Importing cluster..."
+            terraform import \
+              'module.eks.aws_eks_cluster.this[0]' \
+              devops-cluster
+          fi
+
+      - name: Import EKS Node Group
+        working-directory: terraform
+        run: |
+          if terraform state list | grep -q 'module.eks.module.eks_managed_node_group\["devops"\].aws_eks_node_group.this\[0\]'; then
+            echo "Node group already in state, skipping import"
+          else
+            echo "Importing node group..."
+            terraform import \
+              'module.eks.module.eks_managed_node_group["devops"].aws_eks_node_group.this[0]' \
+              'devops-cluster:devops-20260405111716013500000001'
+          fi
+
+      - name: Show state after import
+        working-directory: terraform
+        run: |
+          echo "=== State after import ==="
+          terraform state list
 
       - name: Terraform Plan
         working-directory: terraform
@@ -68,5 +112,17 @@ jobs:
       - name: Install Helm
         run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
+      - name: Install AWS Load Balancer Controller
+        run: |
+          helm repo add eks https://aws.github.io/eks-charts
+          helm repo update
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+            -n kube-system \
+            --set clusterName=devops-cluster \
+            --set serviceAccount.create=true || true
+
       - name: Deploy App
-        run: helm upgrade --install devops-app ./helm-chart
+        run: |
+          helm upgrade --install devops-app ./helm-chart \
+            --set image.repository=praj83/devops-app \
+            --set image.tag=latest
