@@ -8,7 +8,6 @@ on:
 jobs:
   terraform:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -24,19 +23,22 @@ jobs:
           aws-region: ap-south-1
 
       - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -reconfigure
+
+      - name: Import cluster if not in state
+        working-directory: terraform
         run: |
-          cd terraform
-          terraform init -reconfigure
+          terraform state show 'module.eks.aws_eks_cluster.this[0]' > /dev/null 2>&1 \
+            || terraform import 'module.eks.aws_eks_cluster.this[0]' devops-cluster
 
       - name: Terraform Apply
-        run: |
-          cd terraform
-          terraform apply -auto-approve
+        working-directory: terraform
+        run: terraform apply -auto-approve
 
   deploy:
     needs: terraform
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -55,5 +57,4 @@ jobs:
         run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
       - name: Deploy App
-        run: |
-          helm upgrade --install devops-app ./helm-chart
+        run: helm upgrade --install devops-app ./helm-chart
